@@ -4,7 +4,7 @@ import { useUser } from './UserContext';
 import { api } from './api';
 
 export default function AdminPage({ onClose }: { onClose: () => void }) {
-  const { user, users, refreshUsers, toggleAdmin, toggleUpload, deleteUser } = useUser();
+  const { user, users, refreshUsers, toggleAdmin, toggleUpload } = useUser();
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'users' | 'anime'>('users');
   const [animeList, setAnimeList] = useState<any[]>([]);
@@ -64,7 +64,7 @@ export default function AdminPage({ onClose }: { onClose: () => void }) {
                     <td className="px-3 py-2.5"><div className="flex justify-end gap-1">
                       <button onClick={() => toggleAdmin(u.id)} disabled={u.id === user.id} className={`flex h-7 items-center rounded-full px-2.5 text-[10px] font-medium ${u.isAdmin ? 'bg-pink-100 text-pink-700 hover:bg-pink-200' : 'border border-zinc-200 text-zinc-600 hover:bg-zinc-50'} disabled:opacity-30`}>Админ</button>
                       <button onClick={() => toggleUpload(u.id)} disabled={u.isAdmin} className={`flex h-7 items-center rounded-full px-2.5 text-[10px] font-medium ${u.canUpload && !u.isAdmin ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'border border-zinc-200 text-zinc-600 hover:bg-zinc-50'} disabled:opacity-30`}>Загрузка</button>
-                      <button onClick={() => { if (confirm(`Удалить ${u.nickname}?`)) deleteUser(u.id); }} disabled={u.isAdmin} className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-30"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button disabled={u.isAdmin} className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-200 disabled:opacity-30" title="Удаление недоступно"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div></td>
                   </tr>
                 ))}

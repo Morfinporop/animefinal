@@ -4,9 +4,6 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import { initDatabase, query } from './db';
 import { hashPassword, verifyPassword, signToken, authMiddleware, requireAuth, requireAdmin, UserPayload } from './auth';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 
 dotenv.config();
 
@@ -15,66 +12,63 @@ const PORT = parseInt(process.env.PORT || '3000');
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '800mb' }));
+app.use(express.json({ limit: '1gb' }));
 app.use(cookieParser());
 app.use(authMiddleware);
 
-// Раздача статики (собранный vite)
-const distPath = path.join(process.cwd(), 'dist');
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
-}
+app.get('/api/health', (req, res) => res.json({ ok: true, time: Date.now() }));
 
-// Загрузка видео
-const uploadsDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname),
-});
-const upload = multer({ storage, limits: { fileSize: 750 * 1024 * 1024 } });
-
-// === AUTH ===
+// ============= AUTH =============
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username?.trim() || !password?.trim() || password.length < 3) {
-      return res.status(400).json({ error: 'Username and password (min 3) required' });
-    }
-    const existing = await query('SELECT id FROM users WHERE LOWER(username) = LOWER($1)', [username]);
-    if (existing.rows.length > 0) return res.status(409).json({ error: 'Username taken' });
-    const isAdmin = username.toLowerCase() === 'morfin';
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: 'Заполните все поля' });
+    if (username.length < 3) return res.status(400).json({ error: 'Имя пользователя минимум 3 символа' });
+    if (password.length < 4) return res.status(400).json({ error: 'Пароль минимум 4 символа' });
+
     const hash = await hashPassword(password);
+    // Только никнейм Morfin = админ
+    const isAdmin = username === 'Morfin';
     const avatarColor = ['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6','#ec4899'][Math.floor(Math.random() * 6)];
-    const result = await query(
-      'INSERT INTO users (username, password_hash, avatar_color, is_admin, can_upload) VALUES ($1,$2,$3,$4,$5) RETURNING id, username, avatar_color, is_admin, can_upload',
-      [username.trim(), hash, avatarColor, isAdmin, isAdmin]
-    );
-    const u = result.rows[0];
-    const token = signToken({ id: u.id, username: u.username, avatarColor: u.avatar_color, isAdmin: u.is_admin, canUpload: u.can_upload });
-    res.cookie('token', token, { httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 3600 * 1000 });
-    res.json({ user: { id: u.id, nickname: u.username, color: u.avatar_color, isAdmin: u.is_admin, canUpload: u.can_upload }, token });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+
+    try {
+      const r = await query(
+        `INSERT INTO users (username, password_hash, avatar_color, is_admin, can_upload)
+         VALUES ($1, $2, $3, $4, $4) RETURNING id, username, avatar_color, is_admin, can_upload`,
+        [username, hash, avatarColor, isAdmin]
+      );
+      const u = r.rows[0];
+      const payload: UserPayload = { id: u.id, username: u.username, avatarColor: u.avatar_color, isAdmin: u.is_admin, canUpload: u.can_upload };
+      const token = signToken(payload);
+      res.cookie('token', token, { httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 3600 * 1000 });
+      res.json({ user: payload, token });
+    } catch (err: any) {
+      if (err.code === '23505') return res.status(409).json({ error: 'Пользователь уже существует' });
+      throw err;
+    }
+  } catch (err: any) {
+    console.error('[register]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    const result = await query('SELECT * FROM users WHERE LOWER(username) = LOWER($1)', [username]);
-    if (result.rows.length === 0) return res.status(401).json({ error: 'Неверный логин или пароль' });
-    const u = result.rows[0];
+    const { username, password } = req.body || {};
+    if (!username || !password) return res.status(400).json({ error: 'Заполните все поля' });
+    const r = await query(`SELECT id, username, password_hash, avatar_color, is_admin, can_upload FROM users WHERE username = $1`, [username]);
+    const u = r.rows[0];
+    if (!u) return res.status(401).json({ error: 'Неверные данные' });
     const valid = await verifyPassword(password, u.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Неверный логин или пароль' });
-    const token = signToken({ id: u.id, username: u.username, avatarColor: u.avatar_color, isAdmin: u.is_admin, canUpload: u.can_upload });
+    if (!valid) return res.status(401).json({ error: 'Неверные данные' });
+    const payload: UserPayload = { id: u.id, username: u.username, avatarColor: u.avatar_color, isAdmin: u.is_admin, canUpload: u.can_upload };
+    const token = signToken(payload);
     res.cookie('token', token, { httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 3600 * 1000 });
-    res.json({ user: { id: u.id, nickname: u.username, color: u.avatar_color, isAdmin: u.is_admin, canUpload: u.can_upload }, token });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/auth/me', async (req, res) => {
-  const u = req.user as UserPayload | null;
-  if (!u) return res.json({ user: null });
-  res.json({ user: { id: u.id, nickname: u.username, color: u.avatarColor, isAdmin: u.isAdmin, canUpload: u.canUpload } });
+    res.json({ user: payload, token });
+  } catch (err: any) {
+    console.error('[login]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -82,208 +76,284 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-// === ANIME ===
+app.get('/api/auth/me', (req, res) => {
+  const u = req.user as UserPayload | null;
+  if (!u) return res.json({ user: null });
+  res.json({ user: { id: u.id, nickname: u.username, color: u.avatarColor, isAdmin: u.isAdmin, canUpload: u.canUpload } });
+});
+
+app.post('/api/auth/change-password', requireAuth, async (req: any, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body || {};
+    if (!oldPassword || !newPassword) return res.status(400).json({ error: 'Заполните оба поля' });
+    if (newPassword.length < 4) return res.status(400).json({ error: 'Пароль минимум 4 символа' });
+
+    const r = await query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+    const u = r.rows[0];
+    if (!u) return res.status(404).json({ error: 'Пользователь не найден' });
+    const valid = await verifyPassword(oldPassword, u.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Неверный старый пароль' });
+
+    const newHash = await hashPassword(newPassword);
+    await query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, req.user.id]);
+    res.json({ ok: true });
+  } catch (err: any) {
+    console.error('[change-password]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// ============= ANIME =============
 app.get('/api/anime', async (req, res) => {
   try {
-    const result = await query('SELECT * FROM anime ORDER BY created_at DESC');
-    const list = result.rows.map(a => ({
-      id: a.id, title: a.title, description: a.description,
-      image: a.poster_data || '', views: a.views_count, rating: 0,
-      genres: a.genres, year: a.year, videoSrc: a.video_url,
+    const r = await query(`
+      SELECT a.id, a.title, a.description, a.year, a.poster_mime, a.video_mime,
+        a.genres, a.views_count, a.likes_count, a.dislikes_count, a.created_at
+      FROM anime a
+      ORDER BY a.created_at DESC
+    `);
+    const items = r.rows.map((a: any) => ({
+      id: a.id,
+      title: a.title,
+      description: a.description || '',
+      year: a.year,
+      genres: Array.isArray(a.genres) ? a.genres : [],
+      viewsCount: a.views_count || 0,
+      likesCount: a.likes_count || 0,
+      dislikesCount: a.dislikes_count || 0,
+      hasPoster: !!a.poster_mime,
+      hasVideo: !!a.video_mime,
     }));
-    res.json(list);
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+    res.json({ items });
+  } catch (err: any) {
+    console.error('[anime list]', err.message);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
-app.post('/api/anime', requireAuth, upload.fields([{ name: 'video', maxCount: 1 }, { name: 'poster', maxCount: 1 }]), async (req: any, res) => {
+app.get('/api/anime/:id', async (req, res) => {
   try {
-    const { title, description, year, genres } = req.body;
-    if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
-    const videoFile = req.files?.video?.[0];
-    const posterFile = req.files?.poster?.[0];
-    const videoUrl = videoFile ? '/uploads/' + videoFile.filename : '';
-    let posterData = '';
-    if (posterFile) {
-      posterData = 'data:' + (posterFile.mimetype || 'image/png') + ';base64,' + fs.readFileSync(posterFile.path).toString('base64');
-    }
-    const genreList = typeof genres === 'string' ? genres.split(',').map((g: string) => g.trim()).filter(Boolean) : [];
-    const result = await query(
-      'INSERT INTO anime (title, description, poster_data, genres, year, video_url, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-      [title.trim(), description || '', posterData, genreList, parseInt(year) || 2024, videoUrl, req.user.id]
+    const r = await query(`SELECT * FROM anime WHERE id = $1`, [req.params.id]);
+    const a = r.rows[0];
+    if (!a) return res.status(404).json({ error: 'Не найдено' });
+    res.json({
+      anime: {
+        id: a.id, title: a.title, description: a.description || '',
+        year: a.year, genres: Array.isArray(a.genres) ? a.genres : [],
+        viewsCount: a.views_count || 0, likesCount: a.likes_count || 0, dislikesCount: a.dislikes_count || 0,
+        hasPoster: !!a.poster_mime, hasVideo: !!a.video_mime,
+      }
+    });
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка сервера' }); }
+});
+
+// Загрузка аниме (с файлами в base64)
+app.post('/api/anime/upload', requireAuth, async (req: any, res) => {
+  try {
+    const { title, description, year, genres, poster, posterMime, video, videoMime } = req.body || {};
+    if (!title) return res.status(400).json({ error: 'Название обязательно' });
+    if (!req.user.canUpload && !req.user.isAdmin) return res.status(403).json({ error: 'Нет прав на загрузку' });
+
+    const genreList = genres ? genres.split(',').map((g: string) => g.trim()).filter(Boolean) : [];
+    const posterBuf = poster ? Buffer.from(poster, 'base64') : null;
+    const videoBuf = video ? Buffer.from(video, 'base64') : null;
+
+    const r = await query(
+      `INSERT INTO anime (title, description, year, genres, poster_data, poster_mime, video_data, video_mime, author_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [title, description || '', Number(year) || new Date().getFullYear(), genreList, posterBuf, posterMime || null, videoBuf, videoMime || null, req.user.id]
     );
-    const a = result.rows[0];
-    res.json({ id: a.id, title: a.title, description: a.description, image: posterData, views: 0, rating: 0, genres: a.genres, year: a.year, videoSrc: videoUrl });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+    res.json({ animeId: r.rows[0].id });
+  } catch (err: any) { console.error('[upload anime]', err.message); res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/anime/:id', requireAdmin, async (req, res) => {
+// Файлы — отдача по ID
+app.get('/api/files/anime/:id/poster', async (req, res) => {
   try {
-    const { id } = req.params;
-    await query('DELETE FROM comment_likes WHERE comment_id IN (SELECT id FROM comments WHERE anime_id=$1)', [id]);
-    await query('DELETE FROM comments WHERE anime_id=$1', [id]);
-    await query('DELETE FROM ratings WHERE anime_id=$1', [id]);
-    await query('DELETE FROM views WHERE anime_id=$1', [id]);
-    await query('DELETE FROM anime WHERE id=$1', [id]);
-    res.json({ ok: true });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+    const r = await query('SELECT poster_data, poster_mime FROM anime WHERE id = $1', [req.params.id]);
+    const a = r.rows[0];
+    if (!a || !a.poster_data) return res.status(404).json({ error: 'Постер не найден' });
+    res.setHeader('Content-Type', a.poster_mime || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(a.poster_data);
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-// === COMMENTS ===
+app.get('/api/files/anime/:id/video', async (req, res) => {
+  try {
+    const r = await query('SELECT video_data, video_mime FROM anime WHERE id = $1', [req.params.id]);
+    const a = r.rows[0];
+    if (!a || !a.video_data) return res.status(404).json({ error: 'Видео не найдено' });
+    res.setHeader('Content-Type', a.video_mime || 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(a.video_data);
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
+});
+
+// ============= COMMENTS =============
 app.get('/api/anime/:id/comments', async (req, res) => {
   try {
-    const result = await query(
-      `SELECT c.*, u.username as author, u.avatar_color as avatar_color,
-        (SELECT COUNT(*) FROM comment_likes WHERE comment_id=c.id) as likes
-       FROM comments c JOIN users u ON c.user_id=u.id
-       WHERE c.anime_id=$1 AND c.parent_id IS NULL ORDER BY c.created_at DESC`,
+    const r = await query(
+      `SELECT c.id, c.text, c.created_at, c.likes, c.user_id, u.username, u.avatar_color
+       FROM comments c LEFT JOIN users u ON u.id = c.user_id
+       WHERE c.anime_id = $1 ORDER BY c.created_at DESC`,
       [req.params.id]
     );
-    const replies = await query(
-      `SELECT c.*, u.username as author, u.avatar_color as avatar_color,
-        (SELECT COUNT(*) FROM comment_likes WHERE comment_id=c.id) as likes
-       FROM comments c JOIN users u ON c.user_id=u.id
-       WHERE c.anime_id=$1 AND c.parent_id IS NOT NULL ORDER BY c.created_at ASC`,
-      [req.params.id]
-    );
-    const replyMap = new Map<number, any[]>();
-    replies.rows.forEach((r: any) => {
-      if (!replyMap.has(r.parent_id)) replyMap.set(r.parent_id, []);
-      replyMap.get(r.parent_id)!.push({
-        id: r.id, author: r.author, avatarColor: r.avatar_color,
-        text: r.text, date: r.created_at, likes: parseInt(r.likes), dislikes: 0, replies: [],
-      });
-    });
-    const comments = result.rows.map((c: any) => ({
-      id: c.id, author: c.author, avatarColor: c.avatar_color,
-      text: c.text, date: c.created_at, likes: parseInt(c.likes), dislikes: 0,
-      replies: replyMap.get(c.id) || [],
+    const comments = r.rows.map((c: any) => ({
+      id: c.id, text: c.text, date: c.created_at, likes: c.likes || 0,
+      author: c.username, avatarColor: c.avatar_color, userId: c.user_id,
     }));
-    res.json(comments);
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+    res.json({ comments });
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
 app.post('/api/anime/:id/comments', requireAuth, async (req: any, res) => {
   try {
-    const { text, parentId } = req.body;
-    if (!text?.trim()) return res.status(400).json({ error: 'Text required' });
-    const result = await query(
-      'INSERT INTO comments (anime_id, user_id, parent_id, text) VALUES ($1,$2,$3,$4) RETURNING *',
-      [req.params.id, req.user.id, parentId || null, text.trim()]
+    const { text } = req.body || {};
+    if (!text?.trim()) return res.status(400).json({ error: 'Комментарий не может быть пустым' });
+    const r = await query(
+      `INSERT INTO comments (anime_id, user_id, text) VALUES ($1, $2, $3) RETURNING id, text, created_at, likes`,
+      [req.params.id, req.user.id, text.trim()]
     );
-    const c = result.rows[0];
-    res.json({ id: c.id, author: req.user.username, avatarColor: req.user.avatarColor, text: c.text, date: c.created_at, likes: 0, dislikes: 0, replies: [] });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+    const c = r.rows[0];
+    res.json({
+      id: c.id, text: c.text, date: c.created_at, likes: c.likes || 0,
+      author: req.user.username, avatarColor: req.user.avatarColor, userId: req.user.id,
+    });
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-app.delete('/api/comments/:id', requireAdmin, async (req, res) => {
+app.delete('/api/admin/comments/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await query('DELETE FROM comment_likes WHERE comment_id=$1', [req.params.id]);
-    await query('DELETE FROM comments WHERE id=$1 OR parent_id=$1', [req.params.id]);
+    await query('DELETE FROM comments WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-app.post('/api/comments/:id/like', requireAuth, async (req: any, res) => {
+// ============= VOTES =============
+app.get('/api/anime/:id/votes', requireAuth, async (req: any, res) => {
   try {
-    const existing = await query('SELECT * FROM comment_likes WHERE user_id=$1 AND comment_id=$2', [req.user.id, req.params.id]);
-    if (existing.rows.length > 0) {
-      await query('DELETE FROM comment_likes WHERE user_id=$1 AND comment_id=$2', [req.user.id, req.params.id]);
-    } else {
-      await query('INSERT INTO comment_likes (user_id, comment_id) VALUES ($1,$2)', [req.user.id, req.params.id]);
-    }
-    const count = await query('SELECT COUNT(*) FROM comment_likes WHERE comment_id=$1', [req.params.id]);
-    res.json({ likes: parseInt(count.rows[0].count) });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+    const r = await query(
+      `SELECT 
+        COALESCE(SUM(CASE WHEN vote = 1 THEN 1 ELSE 0 END), 0) as likes,
+        COALESCE(SUM(CASE WHEN vote = -1 THEN 1 ELSE 0 END), 0) as dislikes
+       FROM user_votes WHERE anime_id = $1`,
+      [req.params.id]
+    );
+    const uv = await query(`SELECT vote FROM user_votes WHERE anime_id = $1 AND user_id = $2`, [req.params.id, req.user.id]);
+    res.json({
+      likes: Number(r.rows[0]?.likes || 0),
+      dislikes: Number(r.rows[0]?.dislikes || 0),
+      userVote: uv.rows[0]?.vote || 0,
+    });
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-// === RATINGS ===
+app.post('/api/anime/:id/vote', requireAuth, async (req: any, res) => {
+  try {
+    const { vote } = req.body || {};
+    if (vote !== 1 && vote !== -1 && vote !== 0) return res.status(400).json({ error: 'Неверный голос' });
+    await query('DELETE FROM user_votes WHERE anime_id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (vote !== 0) {
+      await query('INSERT INTO user_votes (anime_id, user_id, vote) VALUES ($1, $2, $3)', [req.params.id, req.user.id, vote]);
+    }
+    const r = await query(
+      `SELECT 
+        COALESCE(SUM(CASE WHEN vote = 1 THEN 1 ELSE 0 END), 0) as likes,
+        COALESCE(SUM(CASE WHEN vote = -1 THEN 1 ELSE 0 END), 0) as dislikes
+       FROM user_votes WHERE anime_id = $1`,
+      [req.params.id]
+    );
+    await query('UPDATE anime SET likes_count = $1, dislikes_count = $2 WHERE id = $3',
+      [Number(r.rows[0]?.likes || 0), Number(r.rows[0]?.dislikes || 0), req.params.id]);
+    res.json({ likes: Number(r.rows[0]?.likes || 0), dislikes: Number(r.rows[0]?.dislikes || 0), userVote: vote });
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
+});
+
+// ============= RATINGS =============
+app.get('/api/anime/:id/rating', requireAuth, async (req: any, res) => {
+  try {
+    const r = await query(`SELECT COALESCE(AVG(score), 0) as average, COUNT(*) as count FROM ratings WHERE anime_id = $1`, [req.params.id]);
+    const ur = await query(`SELECT score FROM ratings WHERE anime_id = $1 AND user_id = $2`, [req.params.id, req.user.id]);
+    res.json({
+      average: Number(r.rows[0]?.average || 0),
+      count: Number(r.rows[0]?.count || 0),
+      userScore: ur.rows[0]?.score || null,
+    });
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
+});
+
 app.post('/api/anime/:id/rate', requireAuth, async (req: any, res) => {
   try {
-    const { score } = req.body;
-    if (!score || score < 1 || score > 10) return res.status(400).json({ error: 'Score 1-10 required' });
+    const { score } = req.body || {};
+    const numScore = Number(score);
+    if (numScore < 1 || numScore > 10) return res.status(400).json({ error: 'Оценка от 1 до 10' });
+    await query('DELETE FROM ratings WHERE anime_id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    await query('INSERT INTO ratings (anime_id, user_id, score) VALUES ($1, $2, $3)', [req.params.id, req.user.id, numScore]);
+    const r = await query(`SELECT COALESCE(AVG(score), 0) as average, COUNT(*) as count FROM ratings WHERE anime_id = $1`, [req.params.id]);
+    res.json({ average: Number(r.rows[0]?.average || 0), count: Number(r.rows[0]?.count || 0), userScore: numScore });
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
+});
+
+// ============= HISTORY/VIEWS =============
+app.post('/api/history/:id', requireAuth, async (req: any, res) => {
+  try {
+    const epId = Number(req.params.id);
+    const { watchedSeconds = 0 } = req.body || {};
+    // Добавляем просмотр (если аниме)
     await query(
-      'INSERT INTO ratings (user_id, anime_id, score) VALUES ($1,$2,$3) ON CONFLICT (user_id, anime_id) DO UPDATE SET score=$3, updated_at=NOW()',
-      [req.user.id, req.params.id, score]
+      `UPDATE anime SET views_count = views_count + 1 WHERE id = $1`,
+      [epId]
     );
-    res.json({ ok: true, score });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+    const r = await query('SELECT views_count FROM anime WHERE id = $1', [epId]);
+    res.json({ views: Number(r.rows[0]?.views_count || 0) });
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-// === VIEWS ===
-app.post('/api/anime/:id/view', requireAuth, async (req: any, res) => {
+// ============= ADMIN =============
+app.get('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    await query('INSERT INTO views (user_id, anime_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.user.id, req.params.id]);
-    await query('UPDATE anime SET views_count = views_count + 1 WHERE id=$1', [req.params.id]);
-    res.json({ ok: true });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-// === ADMIN ===
-app.get('/api/admin/users', requireAdmin, async (req, res) => {
-  try {
-    const result = await query('SELECT id, username, avatar_color, is_admin, can_upload, created_at FROM users ORDER BY id');
-    res.json(result.rows.map((u: any) => ({
+    const r = await query(`SELECT id, username, avatar_color, is_admin, can_upload, created_at FROM users ORDER BY id DESC`);
+    const users = r.rows.map((u: any) => ({
       id: u.id, username: u.username, avatarColor: u.avatar_color,
       isAdmin: u.is_admin, canUpload: u.can_upload, createdAt: u.created_at,
-    })));
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+    }));
+    res.json({ users });
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-app.put('/api/admin/users/:id/admin', requireAdmin, async (req, res) => {
+app.post('/api/admin/users/:id/admin', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { isAdmin } = req.body;
-    await query('UPDATE users SET is_admin=$1, can_upload=TRUE WHERE id=$2', [isAdmin, req.params.id]);
+    const { isAdmin } = req.body || {};
+    await query('UPDATE users SET is_admin = $1 WHERE id = $2', [Boolean(isAdmin), req.params.id]);
     res.json({ ok: true });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-app.put('/api/admin/users/:id/upload', requireAdmin, async (req, res) => {
+app.post('/api/admin/users/:id/upload-permission', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { canUpload } = req.body;
-    await query('UPDATE users SET can_upload=$1 WHERE id=$2', [canUpload, req.params.id]);
+    const { canUpload } = req.body || {};
+    await query('UPDATE users SET can_upload = $1 WHERE id = $2', [Boolean(canUpload), req.params.id]);
     res.json({ ok: true });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
-app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
+app.delete('/api/admin/anime/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const user = await query('SELECT is_admin FROM users WHERE id=$1', [req.params.id]);
-    if (user.rows[0]?.is_admin) return res.status(403).json({ error: 'Cannot delete admin' });
-    await query('DELETE FROM comment_likes WHERE user_id=$1', [req.params.id]);
-    await query('DELETE FROM comments WHERE user_id=$1', [req.params.id]);
-    await query('DELETE FROM ratings WHERE user_id=$1', [req.params.id]);
-    await query('DELETE FROM views WHERE user_id=$1', [req.params.id]);
-    await query('DELETE FROM users WHERE id=$1', [req.params.id]);
+    await query('DELETE FROM anime WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-// Отдача загруженных файлов
-app.use('/uploads', express.static(uploadsDir));
-
-// SPA fallback — только для не-API запросов
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api/')) {
-    return res.status(404).json({ error: 'Not found' });
-  }
-  const indexPath = path.join(distPath, 'index.html');
-  if (fs.existsSync(indexPath)) res.sendFile(indexPath);
-  else res.status(200).send('AnimeWorld API running');
+  } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
 });
 
 async function start() {
   console.log(`[server] Starting on port ${PORT}...`);
-  await initDatabase();
-
-  // Админ по умолчанию
   try {
-    const existing = await query("SELECT id FROM users WHERE LOWER(username)='morfin'");
-    if (existing.rows.length === 0) {
-      const hash = await hashPassword('morfin2024');
-      await query("INSERT INTO users (username, password_hash, avatar_color, is_admin, can_upload) VALUES ('Morfin',$1,'#ef4444',TRUE,TRUE)", [hash]);
-      console.log('[init] Admin Morfin created');
-    }
-  } catch {}
+    await initDatabase();
+    console.log('[init] Database ready');
+  } catch (err: any) {
+    console.error('[init] DB init error:', err.message);
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[server] Running on port ${PORT} (${NODE_ENV})`);

@@ -8,7 +8,6 @@ async function request(url: string, options?: RequestInit) {
     throw new Error('Сервер недоступен');
   }
 
-  // Безопасный парсинг JSON
   let data: any;
   try {
     const text = await res.text();
@@ -27,10 +26,12 @@ async function request(url: string, options?: RequestInit) {
 export const api = {
   // Auth
   async register(username: string, password: string) {
-    return request('/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    const res = await request('/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    return { user: res.user };
   },
   async login(username: string, password: string) {
-    return request('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    const res = await request('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+    return { user: res.user };
   },
   async me() {
     return request('/auth/me');
@@ -38,53 +39,74 @@ export const api = {
   async logout() {
     return request('/auth/logout', { method: 'POST' });
   },
+  async changePassword(oldPassword: string, newPassword: string) {
+    return request('/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldPassword, newPassword }) });
+  },
 
   // Anime
   async getAnimeList() {
-    return request('/anime');
+    const res = await request('/anime');
+    return res.items || [];
   },
-  async uploadAnime(formData: FormData) {
-    return request('/anime', { method: 'POST', body: formData });
+  async getAnime(id: number) {
+    const res = await request(`/anime/${id}`);
+    return res.anime;
+  },
+  async uploadAnime(data: { title: string; description?: string; year?: number; genres?: string; video: string; videoMime: string; poster?: string; posterMime?: string }) {
+    return request('/anime/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
   },
   async deleteAnime(id: number) {
-    return request(`/anime/${id}`, { method: 'DELETE' });
+    return request(`/admin/anime/${id}`, { method: 'DELETE' });
+  },
+  getPosterUrl(id: number) {
+    return `${BASE}/files/anime/${id}/poster`;
+  },
+  getVideoUrl(episodeId: number) {
+    return `${BASE}/files/episode/${episodeId}/video`;
   },
 
   // Comments
   async getComments(animeId: number) {
-    return request(`/anime/${animeId}/comments`);
+    const res = await request(`/anime/${animeId}/comments`);
+    return res.comments || [];
   },
-  async addComment(animeId: number, text: string, parentId?: number) {
-    return request(`/anime/${animeId}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, parentId }) });
+  async addComment(animeId: number, text: string, episodeId?: number) {
+    return request(`/anime/${animeId}/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, episodeId }) });
   },
   async deleteComment(id: number) {
-    return request(`/comments/${id}`, { method: 'DELETE' });
+    return request(`/admin/comments/${id}`, { method: 'DELETE' });
   },
-  async likeComment(id: number) {
-    return request(`/comments/${id}/like`, { method: 'POST' });
+
+  // Votes
+  async getVotes(animeId: number) {
+    return request(`/anime/${animeId}/votes`);
+  },
+  async vote(animeId: number, vote: 0 | 1 | -1) {
+    return request(`/anime/${animeId}/vote`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vote }) });
   },
 
   // Ratings
-  async rateAnime(animeId: number, score: number) {
+  async getRating(animeId: number) {
+    return request(`/anime/${animeId}/rating`);
+  },
+  async rate(animeId: number, score: number) {
     return request(`/anime/${animeId}/rate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ score }) });
   },
 
   // Views
-  async addView(animeId: number) {
-    return request(`/anime/${animeId}/view`, { method: 'POST' });
+  async addView(episodeId: number, watchedSeconds: number = 0) {
+    return request(`/history/${episodeId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ watchedSeconds }) });
   },
 
   // Admin
   async getUsers() {
-    return request('/admin/users');
+    const res = await request('/admin/users');
+    return res.users || [];
   },
   async setAdmin(userId: number, isAdmin: boolean) {
-    return request(`/admin/users/${userId}/admin`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isAdmin }) });
+    return request(`/admin/users/${userId}/admin`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isAdmin }) });
   },
   async setUpload(userId: number, canUpload: boolean) {
-    return request(`/admin/users/${userId}/upload`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ canUpload }) });
-  },
-  async deleteUser(userId: number) {
-    return request(`/admin/users/${userId}`, { method: 'DELETE' });
+    return request(`/admin/users/${userId}/upload-permission`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ canUpload }) });
   },
 };

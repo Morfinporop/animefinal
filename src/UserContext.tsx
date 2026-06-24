@@ -15,18 +15,14 @@ type UserContextType = {
   users: User[];
   login: (nickname: string, password: string) => Promise<boolean>;
   logout: () => void;
-  changePassword: (oldPass: string, newPass: string) => boolean;
-  getUserLikes: (animeId: number) => Set<number>;
-  setUserLikes: (animeId: number, ids: Set<number>) => void;
+  changePassword: (oldPass: string, newPass: string) => Promise<boolean>;
   toggleAdmin: (userId: number) => Promise<void>;
   toggleUpload: (userId: number) => Promise<void>;
-  deleteUser: (userId: number) => Promise<void>;
   refreshUsers: () => Promise<void>;
   checkAuth: () => Promise<void>;
 };
 
 const UserContext = createContext<UserContextType | null>(null);
-const userLikesStore = new Map<number, Map<number, Set<number>>>();
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -45,7 +41,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
   useEffect(() => { checkAuth(); }, [checkAuth]);
 
   const refreshUsers = useCallback(async () => {
-    try { const data = await api.getUsers(); setUsers(data); } catch {}
+    try {
+      const data = await api.getUsers();
+      setUsers(data);
+    } catch (e) {
+      // Не админ — пустой массив
+      setUsers([]);
+    }
   }, []);
 
   const login = useCallback(async (nickname: string, password: string): Promise<boolean> => {
@@ -55,7 +57,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       notify.success(`Добро пожаловать, ${data.user.nickname}!${data.user.isAdmin ? ' (Админ)' : ''}`);
       return true;
     } catch (err: any) {
-      // Если регистрация не удалась (username занят) — пробуем логин
+      // Если регистрация не удалась — пробуем логин
       try {
         const data = await api.login(nickname.trim(), password);
         setUser(data.user);
@@ -71,48 +73,39 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     api.logout().catch(() => {});
     setUser(null);
+    setUsers([]);
     notify.info('Вы вышли из аккаунта');
   }, [notify]);
 
-  const changePassword = useCallback((_oldPass: string, _newPass: string): boolean => {
-    notify.error('Смена пароля временно недоступна через API');
-    return false;
+  const changePassword = useCallback(async (oldPass: string, newPass: string): Promise<boolean> => {
+    try {
+      await api.changePassword(oldPass, newPass);
+      notify.success('Пароль изменён');
+      return true;
+    } catch (err: any) {
+      notify.error(err.message || 'Ошибка смены пароля');
+      return false;
+    }
   }, [notify]);
-
-  const getUserLikes = useCallback((animeId: number): Set<number> => {
-    if (!user) return new Set();
-    return userLikesStore.get(user.id)?.get(animeId) || new Set();
-  }, [user]);
-
-  const setUserLikes = useCallback((animeId: number, ids: Set<number>) => {
-    if (!user) return;
-    let userMap = userLikesStore.get(user.id);
-    if (!userMap) { userMap = new Map(); userLikesStore.set(user.id, userMap); }
-    userMap.set(animeId, ids);
-  }, [user]);
 
   const toggleAdmin = useCallback(async (userId: number) => {
     const target = users.find(u => u.id === userId);
     if (!target) return;
-    await api.setAdmin(userId, !target.isAdmin);
-    await refreshUsers();
-    notify.success(`${target.nickname}: ${!target.isAdmin ? 'админ' : 'права админа сняты'}`);
+    try {
+      await api.setAdmin(userId, !target.isAdmin);
+      await refreshUsers();
+      notify.success(`${target.nickname}: ${!target.isAdmin ? 'админ' : 'права сняты'}`);
+    } catch (err: any) { notify.error(err.message); }
   }, [users, refreshUsers, notify]);
 
   const toggleUpload = useCallback(async (userId: number) => {
     const target = users.find(u => u.id === userId);
     if (!target) return;
-    await api.setUpload(userId, !target.canUpload);
-    await refreshUsers();
-    notify.success(`${target.nickname}: загрузка ${!target.canUpload ? 'включена' : 'отключена'}`);
-  }, [users, refreshUsers, notify]);
-
-  const deleteUser = useCallback(async (userId: number) => {
-    const target = users.find(u => u.id === userId);
-    if (!target || target.isAdmin) { notify.error('Нельзя удалить админа'); return; }
-    await api.deleteUser(userId);
-    await refreshUsers();
-    notify.success(`Пользователь ${target.nickname} удалён`);
+    try {
+      await api.setUpload(userId, !target.canUpload);
+      await refreshUsers();
+      notify.success(`${target.nickname}: загрузка ${!target.canUpload ? 'включена' : 'отключена'}`);
+    } catch (err: any) { notify.error(err.message); }
   }, [users, refreshUsers, notify]);
 
   if (!authChecked) {
@@ -120,7 +113,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <UserContext.Provider value={{ user, users, login, logout, changePassword, getUserLikes, setUserLikes, toggleAdmin, toggleUpload, deleteUser, refreshUsers, checkAuth }}>
+    <UserContext.Provider value={{ user, users, login, logout, changePassword, toggleAdmin, toggleUpload, refreshUsers, checkAuth }}>
       {children}
     </UserContext.Provider>
   );

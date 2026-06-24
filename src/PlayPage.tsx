@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
-import { ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Send, Star, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ThumbsUp, ThumbsDown, Send, Star, Trash2 } from 'lucide-react';
 import VideoPlayer from './VideoPlayer';
 import Header from './Header';
 import type { AnimeData, CommentData } from './types';
-import { useUser, type User } from './UserContext';
+import { useUser } from './UserContext';
 import { useNotify } from './NotifyContext';
 import { api } from './api';
 
@@ -20,98 +20,38 @@ function UserRating({ rating, onRate, disabled }: { rating: number | null; onRat
       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
         const filled = hovered ? n <= hovered : rating ? n <= rating : false;
         return (
-          <button key={n} onClick={() => { if (!disabled) onRate(n); }} onMouseEnter={() => { if (!disabled) setHovered(n); }} className={`transition-colors ${disabled ? 'cursor-not-allowed opacity-50' : ''}`} title={disabled ? 'Войдите чтобы оценить' : `${n}/10`}>
-            <Star className={`h-4 w-4 sm:h-5 sm:w-5 ${filled ? 'fill-yellow-400 text-yellow-400' : 'text-zinc-300 hover:text-yellow-300'}`} />
+          <button key={n} onClick={() => { if (!disabled) onRate(n); }} onMouseEnter={() => { if (!disabled) setHovered(n); }} className={`transition-colors ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}>
+            <Star className={`h-5 w-5 sm:h-6 sm:w-6 ${filled ? 'fill-yellow-400 text-yellow-400' : 'text-zinc-300 hover:text-yellow-300'}`} />
           </button>
         );
       })}
-      <span className="ml-1 text-xs font-semibold text-zinc-500">{hovered ? `${hovered}/10` : rating ? `${rating}/10` : ''}</span>
+      <span className="ml-1.5 text-sm font-semibold text-zinc-500">{hovered ? `${hovered}/10` : rating ? `${rating}/10` : ''}</span>
     </div>
   );
 }
 
-function CommentItem({ comment, likedByUser, dislikedByUser, onLike, onDislike, onReply, onDelete, user }: {
-  comment: CommentData; likedByUser: boolean; dislikedByUser: boolean;
-  onLike: (id: number) => void; onDislike: (id: number) => void; onReply: (id: number, text: string) => void;
-  onDelete?: (id: number) => void;
-  user: User | null;
-}) {
-  const [showReplyInput, setShowReplyInput] = useState(false);
-  const [replyText, setReplyText] = useState('');
-  const [showReplies, setShowReplies] = useState(false);
-  const loggedIn = !!user;
-
-  const handleReply = () => {
-    if (!replyText.trim()) return;
-    onReply(comment.id, replyText.trim());
-    setReplyText(''); setShowReplyInput(false); setShowReplies(true);
-  };
-
+function CommentItem({ comment, onDelete, canDelete }: { comment: CommentData; onDelete: (id: number) => void; canDelete: boolean }) {
   return (
     <div className="border-b border-zinc-100 pb-3 last:border-0">
       <div className="flex items-start gap-2">
-        <div className="h-8 w-8 flex-shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold text-white" style={{ backgroundColor: comment.avatarColor || '#d4d4d8' }}>
-          {comment.author.charAt(0).toUpperCase()}
+        <div className="h-9 w-9 flex-shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: comment.avatarColor || '#d4d4d8' }}>
+          {comment.author?.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-zinc-800">{comment.author}</span>
             <span className="text-[11px] text-zinc-400">{comment.date}</span>
-            {user?.isAdmin && onDelete && (
-              <button onClick={() => onDelete(comment.id)} className="ml-auto text-zinc-300 hover:text-red-500 transition-colors" title="Удалить комментарий">
-                <Trash2 className="h-3 w-3" />
+            {canDelete && (
+              <button onClick={() => onDelete(comment.id)} className="ml-auto text-zinc-300 hover:text-red-500 transition-colors" title="Удалить">
+                <Trash2 className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
           <p className="mt-0.5 text-sm text-zinc-600">{comment.text}</p>
-          <div className="mt-1.5 flex items-center gap-3">
-            <button onClick={() => { if (loggedIn) onLike(comment.id); }} className={`flex items-center gap-1 text-xs transition-colors ${!loggedIn ? 'cursor-not-allowed opacity-50' : likedByUser ? 'text-emerald-500' : 'text-zinc-400 hover:text-zinc-600'}`} title={!loggedIn ? 'Войдите чтобы оценить' : undefined}>
-              <ThumbsUp className={`h-3.5 w-3.5 ${likedByUser ? 'fill-emerald-500' : ''}`} /><span>{comment.likes || 0}</span>
-            </button>
-            <button onClick={() => { if (loggedIn) onDislike(comment.id); }} className={`flex items-center gap-1 text-xs transition-colors ${!loggedIn ? 'cursor-not-allowed opacity-50' : dislikedByUser ? 'text-red-500' : 'text-zinc-400 hover:text-zinc-600'}`} title={!loggedIn ? 'Войдите чтобы оценить' : undefined}>
-              <ThumbsDown className={`h-3.5 w-3.5 ${dislikedByUser ? 'fill-red-500' : ''}`} /><span>{comment.dislikes || 0}</span>
-            </button>
-            <button onClick={() => { if (loggedIn) setShowReplyInput(!showReplyInput); }} className={`text-xs transition-colors ${!loggedIn ? 'cursor-not-allowed opacity-50 text-zinc-300' : 'text-zinc-400 hover:text-zinc-600'}`} title={!loggedIn ? 'Войдите чтобы ответить' : undefined}>Ответить</button>
-          </div>
-          {showReplyInput && loggedIn && (
-            <div className="mt-2 flex items-center gap-2">
-              <input type="text" value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Написать ответ..." className="flex-1 rounded-full border border-zinc-200 px-3 py-1.5 text-xs outline-none focus:border-zinc-400" onKeyDown={(e) => { if (e.key === 'Enter') handleReply(); }} />
-              <button onClick={handleReply} className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-800 text-white hover:bg-zinc-700 transition-colors"><Send className="h-3 w-3" /></button>
-            </div>
-          )}
-          {comment.replies.length > 0 && (
-            <div className="mt-1">
-              <button onClick={() => setShowReplies(!showReplies)} className="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-700">
-                {showReplies ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                {comment.replies.length} {comment.replies.length === 1 ? 'ответ' : comment.replies.length < 5 ? 'ответа' : 'ответов'}
-              </button>
-              {showReplies && (
-                <div className="ml-4 mt-2 border-l-2 border-zinc-100 pl-3">
-                  {comment.replies.map((reply) => (
-                    <div key={reply.id} className="mb-2 last:mb-0">
-                      <div className="flex items-center gap-2">
-                        <div className="h-5 w-5 flex-shrink-0 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ backgroundColor: reply.avatarColor || '#d4d4d8' }}>{reply.author.charAt(0).toUpperCase()}</div>
-                        <span className="text-xs font-semibold text-zinc-700">{reply.author}</span>
-                        <span className="text-[10px] text-zinc-400">{reply.date}</span>
-                      </div>
-                      <p className="text-xs text-zinc-500 mt-0.5">{reply.text}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>
   );
-}
-
-function updateCommentLike(list: CommentData[], id: number, delta: number): CommentData[] {
-  return list.map((c) => { if (c.id === id) return { ...c, likes: Math.max(0, c.likes + delta) }; if (c.replies.length > 0) return { ...c, replies: updateCommentLike(c.replies, id, delta) }; return c; });
-}
-function updateCommentDislike(list: CommentData[], id: number, delta: number): CommentData[] {
-  return list.map((c) => { if (c.id === id) return { ...c, dislikes: Math.max(0, c.dislikes + delta) }; if (c.replies.length > 0) return { ...c, replies: updateCommentDislike(c.replies, id, delta) }; return c; });
 }
 
 interface Props {
@@ -122,136 +62,103 @@ interface Props {
   onUpdateComments: (comments: CommentData[]) => void;
 }
 
-export default function PlayPage({ data, onUpdateRating, onAddView, onUpdateComments }: Props) {
-  const { user, getUserLikes, setUserLikes } = useUser();
+export default function PlayPage({ data, onAddView }: Props) {
+  const { user } = useUser();
   const notify = useNotify();
   const loggedIn = !!user;
 
   const [showFullDescription, setShowFullDescription] = useState(false);
-  const [userRating, setUserRating] = useState<number | null>(() => data.rating > 0 ? data.rating : null);
-  const [displayRating, setDisplayRating] = useState(data.rating);
-  const [comments, setComments] = useState<CommentData[]>(data.comments);
-  const [commentsLoading, setCommentsLoading] = useState(false);
-
-  // Загрузка комментариев с API
-  useEffect(() => {
-    setCommentsLoading(true);
-    api.getComments(data.id)
-      .then(c => setComments(c))
-      .catch(() => {})
-      .finally(() => setCommentsLoading(false));
-  }, [data.id]);
+  const [userRating, setUserRating] = useState<number | null>(null);
+  const [displayRating, setDisplayRating] = useState(0);
+  const [likesCount, setLikesCount] = useState(0);
+  const [dislikesCount, setDislikesCount] = useState(0);
+  const [userVote, setUserVote] = useState<0 | 1 | -1>(0);
+  const [comments, setComments] = useState<CommentData[]>([]);
   const [newCommentText, setNewCommentText] = useState('');
-  const [likedIds, setLikedIds] = useState<Set<number>>(() => getUserLikes(data.id));
-  const [dislikedIds, setDislikedIds] = useState<Set<number>>(new Set());
-  const [watchedFull, setWatchedFull] = useState(false);
 
-  // Синхронизация likedIds с хранилищем
+  // Загружаем данные при входе/смене anime
   useEffect(() => {
-    if (user) {
-      setLikedIds(getUserLikes(data.id));
-    } else {
-      setLikedIds(new Set());
-      setDislikedIds(new Set());
-      setUserRating(null);
+    let cancelled = false;
+    setUserRating(null);
+    setUserVote(0);
+    setLikesCount(0);
+    setDislikesCount(0);
+    setDisplayRating(0);
+
+    api.getComments(data.id).then(c => { if (!cancelled) setComments(c); }).catch(() => {});
+
+    if (loggedIn && user) {
+      api.getVotes(data.id).then(v => {
+        if (cancelled) return;
+        setLikesCount(v.likes || 0);
+        setDislikesCount(v.dislikes || 0);
+        setUserVote((v.userVote as 0 | 1 | -1) || 0);
+      }).catch(() => {});
+      api.getRating(data.id).then(r => {
+        if (cancelled) return;
+        if (r.userScore) setUserRating(r.userScore);
+        if (r.average) setDisplayRating(Number(r.average.toFixed(1)));
+      }).catch(() => {});
     }
-  }, [user, data.id, getUserLikes]);
+    return () => { cancelled = true; };
+  }, [data.id, loggedIn, user]);
 
-  // Сохраняем likedIds при изменении
+  // Сброс при выходе
   useEffect(() => {
-    if (user) setUserLikes(data.id, likedIds);
-  }, [likedIds, user, data.id, setUserLikes]);
-
-  // Синхронизация комментариев с родителем
-  useEffect(() => { onUpdateComments(comments); }, [comments, onUpdateComments]);
+    if (!user) { setUserRating(null); setUserVote(0); }
+  }, [user]);
 
   const shortDesc = data.description.length > 150 ? data.description.slice(0, 150) + '...' : data.description;
 
-  const handleRate = useCallback((r: number) => {
-    if (!loggedIn) return;
+  const handleRate = async (r: number) => {
+    if (!loggedIn) { notify.error('Войдите чтобы оценить'); return; }
     setUserRating(r); setDisplayRating(r);
-    onUpdateRating(r);
-    notify.success('Оценка сохранена');
-  }, [loggedIn, notify, onUpdateRating]);
-
-  const handleLike = useCallback(async (id: number) => {
-    if (!loggedIn) return;
     try {
-      const result = await api.likeComment(id);
-      setComments((prev) => {
-        const update = (list: CommentData[]): CommentData[] => list.map((c) => {
-          if (c.id === id) return { ...c, likes: result.likes };
-          if (c.replies.length > 0) return { ...c, replies: update(c.replies) };
-          return c;
-        });
-        return update(prev);
-      });
-      setLikedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(id)) next.delete(id); else next.add(id);
-        return next;
-      });
-    } catch {}
-  }, [loggedIn]);
+      const res = await api.rate(data.id, r);
+      if (res.average) setDisplayRating(Number(res.average.toFixed(1)));
+      notify.success('Оценка сохранена');
+    } catch (err: any) { notify.error(err.message); }
+  };
 
-  const handleDislike = useCallback((id: number) => {
-    if (!loggedIn) return;
-    setDislikedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) { next.delete(id); setComments((c) => updateCommentDislike(c, id, -1)); }
-      else {
-        next.add(id);
-        setLikedIds((ld) => { const nl = new Set(ld); if (nl.has(id)) { nl.delete(id); setComments((c) => updateCommentLike(c, id, -1)); } return nl; });
-        setComments((c) => updateCommentDislike(c, id, 1));
-      }
-      return next;
+  const handleVote = async (newVote: 1 | -1) => {
+    if (!loggedIn) { notify.error('Войдите чтобы оценить'); return; }
+    const finalVote = userVote === newVote ? 0 : newVote;
+    // Оптимистичное обновление UI
+    setUserVote(finalVote);
+    setLikesCount(prev => {
+      if (finalVote === 1 && userVote !== 1) return prev + 1;
+      if (userVote === 1 && finalVote !== 1) return prev - 1;
+      return prev;
     });
-  }, [loggedIn]);
+    setDislikesCount(prev => {
+      if (finalVote === -1 && userVote !== -1) return prev + 1;
+      if (userVote === -1 && finalVote !== -1) return prev - 1;
+      return prev;
+    });
+    try {
+      const res = await api.vote(data.id, finalVote);
+      setLikesCount(res.likes || 0);
+      setDislikesCount(res.dislikes || 0);
+    } catch (err: any) { notify.error(err.message); }
+  };
 
   const handleAddComment = async () => {
-    if (!loggedIn || !newCommentText.trim()) return;
+    if (!loggedIn) { notify.error('Войдите чтобы комментировать'); return; }
+    if (!newCommentText.trim()) return;
     try {
       const newComment = await api.addComment(data.id, newCommentText.trim());
       setComments((prev) => [newComment, ...prev]);
       setNewCommentText('');
       notify.success('Комментарий добавлен');
-    } catch (err: any) {
-      notify.error(err.message || 'Ошибка');
-    }
+    } catch (err: any) { notify.error(err.message || 'Ошибка'); }
   };
 
-  const handleReply = useCallback((parentId: number, text: string) => {
-    if (!loggedIn || !user) return;
-    setComments((prev) => {
-      const update = (list: CommentData[]): CommentData[] => list.map((c) => {
-        if (c.id === parentId) {
-          const reply: CommentData = { id: Date.now(), author: user.nickname, avatar: '', avatarColor: user.color, text, date: 'Только что', likes: 0, dislikes: 0, replies: [] };
-          return { ...c, replies: [...c.replies, reply] };
-        }
-        if (c.replies.length > 0) return { ...c, replies: update(c.replies) };
-        return c;
-      });
-      return update(prev);
-    });
-  }, [loggedIn, user]);
-
-  const handleDeleteComment = useCallback(async (id: number) => {
+  const handleDeleteComment = async (id: number) => {
     try {
       await api.deleteComment(id);
-      setComments((prev) => {
-        const remove = (list: CommentData[]): CommentData[] =>
-          list.filter((c) => c.id !== id).map((c) => c.replies.length > 0 ? { ...c, replies: remove(c.replies) } : c);
-        return remove(prev);
-      });
+      setComments((prev) => prev.filter(c => c.id !== id));
       notify.success('Комментарий удалён');
-    } catch {}
-  }, [notify]);
-
-  const totalComments = comments.reduce((sum, c) => sum + 1 + c.replies.length, 0);
-
-  const handleVideoEnded = () => {
-    setWatchedFull(true);
-    onAddView();
+    } catch (err: any) { notify.error(err.message); }
   };
 
   return (
@@ -259,56 +166,64 @@ export default function PlayPage({ data, onUpdateRating, onAddView, onUpdateComm
       <Header />
 
       <div className="mx-auto max-w-[1600px]">
-        <VideoPlayer
-          videoSrc={data.videoSrc} poster={data.image} title={data.title}
-          qualitySources={data.qualitySources} voiceovers={data.voiceovers}
-          onEnded={handleVideoEnded}
-        />
+        <VideoPlayer videoSrc={data.videoSrc} poster={data.image} title={data.title} onEnded={onAddView} />
 
         <div className="px-4 pb-12 sm:px-6">
           <div className="mt-4">
-            <h1 className="text-xl font-bold text-zinc-900 sm:text-2xl">{data.title}</h1>
+            <h1 className="text-2xl font-bold text-zinc-900 sm:text-3xl">{data.title}</h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {data.genres.map((g) => (
-                <span key={g} className="rounded-full bg-zinc-200/70 px-2.5 py-0.5 text-[11px] font-medium text-zinc-700">{g}</span>
+              {data.genres?.map((g) => (
+                <span key={g} className="rounded-full bg-zinc-200/70 px-2.5 py-0.5 text-xs font-medium text-zinc-700">{g}</span>
               ))}
-              <span className="text-sm text-zinc-500">{data.year}</span>
-              <span className="text-sm text-zinc-500">·</span>
-              <span className="text-sm text-zinc-500">{formatViews(data.views)}</span>
-              <span className="text-sm text-zinc-500">·</span>
+              <span className="text-sm text-zinc-500">{formatViews(data.views || 0)}</span>
               <span className="text-sm font-semibold text-zinc-800">★ {displayRating > 0 ? `${displayRating}/10` : '—'}</span>
             </div>
 
-            <div className="mt-4">
-              <p className="text-sm text-zinc-600 leading-relaxed">{showFullDescription ? data.fullDescription : shortDesc}</p>
-              {data.fullDescription.length > 150 && (
-                <button onClick={() => setShowFullDescription(!showFullDescription)} className="mt-1 text-sm font-medium text-zinc-500 hover:text-zinc-800 transition-colors">
-                  {showFullDescription ? 'Скрыть' : 'Показать полностью'}
-                </button>
-              )}
-            </div>
+            {data.description && (
+              <div className="mt-4">
+                <p className="text-sm text-zinc-600 leading-relaxed">{showFullDescription ? data.description : shortDesc}</p>
+                {data.description.length > 150 && (
+                  <button onClick={() => setShowFullDescription(!showFullDescription)} className="mt-1 text-sm font-medium text-zinc-500 hover:text-zinc-800">
+                    {showFullDescription ? 'Скрыть' : 'Показать полностью'}
+                  </button>
+                )}
+              </div>
+            )}
 
-            <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-4">
-              <h3 className="text-sm font-semibold text-zinc-800">Ваша оценка</h3>
-              {!loggedIn && <p className="text-[11px] text-zinc-400 mt-0.5">Войдите в аккаунт чтобы оценить</p>}
-              <div className="mt-2"><UserRating rating={userRating} onRate={handleRate} disabled={!loggedIn} /></div>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-zinc-200 bg-white p-4">
+                <h3 className="text-sm font-semibold text-zinc-800 mb-2">Ваша оценка</h3>
+                <UserRating rating={userRating} onRate={handleRate} disabled={!loggedIn} />
+                {!loggedIn && <p className="text-[11px] text-zinc-400 mt-1">Войдите чтобы оценить</p>}
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-white p-4">
+                <h3 className="text-sm font-semibold text-zinc-800 mb-2">Лайк / Дизлайк</h3>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => handleVote(1)} disabled={!loggedIn} className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${userVote === 1 ? 'bg-emerald-500 text-white' : 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50'}`}>
+                    <ThumbsUp className={`h-3.5 w-3.5 ${userVote === 1 ? 'fill-white' : ''}`} />
+                    {likesCount}
+                  </button>
+                  <button onClick={() => handleVote(-1)} disabled={!loggedIn} className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${userVote === -1 ? 'bg-red-500 text-white' : 'border border-zinc-200 text-zinc-700 hover:bg-zinc-50'}`}>
+                    <ThumbsDown className={`h-3.5 w-3.5 ${userVote === -1 ? 'fill-white' : ''}`} />
+                    {dislikesCount}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="mt-6">
-            <h2 className="text-lg font-bold text-zinc-900">Комментарии ({totalComments})</h2>
+            <h2 className="text-lg font-bold text-zinc-900">Комментарии ({comments.length})</h2>
             <div className="mt-3 flex items-center gap-2">
-              <input type="text" value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} placeholder={loggedIn ? 'Оставить комментарий...' : 'Войдите чтобы комментировать'} disabled={!loggedIn} className="flex-1 rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 disabled:opacity-50 disabled:cursor-not-allowed" onKeyDown={(e) => { if (e.key === 'Enter') handleAddComment(); }} />
-              <button onClick={handleAddComment} disabled={!loggedIn || !newCommentText.trim()} className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-white hover:bg-zinc-700 disabled:opacity-40 transition-colors"><Send className="h-4 w-4" /></button>
+              <input type="text" value={newCommentText} onChange={(e) => setNewCommentText(e.target.value)} placeholder={loggedIn ? 'Оставить комментарий...' : 'Войдите чтобы комментировать'} disabled={!loggedIn} className="flex-1 rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm outline-none focus:border-zinc-400 disabled:opacity-50" onKeyDown={(e) => { if (e.key === 'Enter') handleAddComment(); }} />
+              <button onClick={handleAddComment} disabled={!loggedIn || !newCommentText.trim()} className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-800 text-white hover:bg-zinc-700 disabled:opacity-40"><Send className="h-4 w-4" /></button>
             </div>
 
             <div className="mt-4 space-y-3 rounded-xl border border-zinc-200 bg-white p-4">
               {comments.length === 0 ? (
-                <p className="text-sm text-zinc-400 text-center py-4">Пока нет комментариев. Будьте первым!</p>
+                <p className="text-sm text-zinc-400 text-center py-4">Пока нет комментариев</p>
               ) : (
-                comments.map((c) => (
-                  <CommentItem key={c.id} comment={c} likedByUser={likedIds.has(c.id)} dislikedByUser={dislikedIds.has(c.id)} onLike={handleLike} onDislike={handleDislike} onReply={handleReply} onDelete={user?.isAdmin ? handleDeleteComment : undefined} user={user} />
-                ))
+                comments.map((c) => <CommentItem key={c.id} comment={c} onDelete={handleDeleteComment} canDelete={!!user?.isAdmin} />)
               )}
             </div>
           </div>

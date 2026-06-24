@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Upload as UploadIcon, X, CheckCircle2, Film, AlertTriangle } from 'lucide-react';
 import { useUser } from './UserContext';
 import { useNotify } from './NotifyContext';
@@ -6,6 +6,20 @@ import { api } from './api';
 
 const MAX_VIDEO_SIZE = 750 * 1024 * 1024;
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Убираем префикс "data:image/png;base64,"
+      const base64 = result.split(',')[1] || result;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error('Ошибка чтения файла'));
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function UploadPage({ onClose, onWatch }: { onClose: () => void; onWatch?: (cardId: number) => void }) {
   const { user } = useUser();
@@ -15,14 +29,15 @@ export default function UploadPage({ onClose, onWatch }: { onClose: () => void; 
   const [animeDesc, setAnimeDesc] = useState('');
   const [animeYear, setAnimeYear] = useState(new Date().getFullYear());
   const [animeGenres, setAnimeGenres] = useState('');
-  const [animePosterPreview, setAnimePosterPreview] = useState('');
+  const [posterPreview, setPosterPreview] = useState('');
   const [posterFile, setPosterFile] = useState<File | null>(null);
-  const [episodeFile, setEpisodeFile] = useState<File | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const [doneCardId, setDoneCardId] = useState<number | null>(null);
+  const cancelRef = useRef(false);
 
   if (!user) {
     return (
@@ -36,49 +51,64 @@ export default function UploadPage({ onClose, onWatch }: { onClose: () => void; 
     );
   }
 
-  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePosterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    if (f.size > MAX_IMAGE_SIZE) { setError(`Баннер слишком большой. Максимум 5 МБ.`); return; }
+    if (f.size > MAX_IMAGE_SIZE) { setError('Баннер слишком большой. Максимум 5 МБ.'); return; }
+    setError('');
     setPosterFile(f);
     const reader = new FileReader();
-    reader.onload = () => setAnimePosterPreview(reader.result as string);
+    reader.onload = () => setPosterPreview(reader.result as string);
     reader.readAsDataURL(f);
+  };
+
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > MAX_VIDEO_SIZE) { setError('Видео слишком большое. Максимум 750 МБ.'); return; }
+    setError('');
+    setVideoFile(f);
   };
 
   const handleUpload = async () => {
     setError('');
     if (!animeTitle.trim()) { setError('Введите название'); return; }
-    if (!episodeFile) { setError('Выберите видеофайл'); return; }
-    if (episodeFile.size > MAX_VIDEO_SIZE) { setError(`Видео слишком большое. Максимум 750 МБ.`); return; }
+    if (!videoFile) { setError('Выберите видеофайл'); return; }
 
     setUploading(true);
     setProgress(0);
-
-    const formData = new FormData();
-    formData.append('title', animeTitle.trim());
-    formData.append('description', animeDesc);
-    formData.append('year', String(animeYear));
-    formData.append('genres', animeGenres);
-    formData.append('video', episodeFile);
-    if (posterFile) formData.append('poster', posterFile);
-
-    // Симулируем прогресс
-    const interval = setInterval(() => setProgress(p => p >= 90 ? 90 : p + 10), 300);
+    cancelRef.current = false;
 
     try {
-      const result = await api.uploadAnime(formData);
-      clearInterval(interval);
+      // Читаем файлы в base64
+      setProgress(10);
+      const videoBase64 = await fileToBase64(videoFile);
+      setProgress(40);
+      const posterBase64 = posterFile ? await fileToBase64(posterFile) : '';
+      setProgress(60);
+
+      const result: any = await api.uploadAnime({
+        title: animeTitle.trim(),
+        description: animeDesc,
+        year: animeYear,
+        genres: animeGenres,
+        video: videoBase64,
+        videoMime: videoFile.type || 'video/mp4',
+        poster: posterBase64,
+        posterMime: posterFile?.type || '',
+      });
+
+      if (cancelRef.current) return;
       setProgress(100);
       setUploading(false);
       setDone(true);
-      setDoneCardId(result.id);
+      setDoneCardId(result?.animeId || result?.id);
       notify.success('Аниме успешно загружено!');
       window.dispatchEvent(new Event('animeworld-cards-updated'));
     } catch (err: any) {
-      clearInterval(interval);
       setUploading(false);
       setError(err.message || 'Ошибка загрузки');
+      notify.error(err.message || 'Ошибка загрузки');
     }
   };
 
@@ -131,20 +161,20 @@ export default function UploadPage({ onClose, onWatch }: { onClose: () => void; 
           <div>
             <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Баннер (макс 5 МБ)</label>
             <label className="mt-1 group relative flex h-32 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 text-zinc-500 transition-colors hover:border-zinc-900 hover:bg-white">
-              {animePosterPreview ? <img src={animePosterPreview} alt="" className="h-full w-full object-cover" /> : <div className="flex flex-col items-center gap-1"><UploadIcon className="h-5 w-5" /><span className="text-[10px] font-medium text-center px-1">Баннер</span></div>}
-              <input type="file" accept="image/*" onChange={handleImageFile} className="absolute inset-0 cursor-pointer opacity-0" />
+              {posterPreview ? <img src={posterPreview} alt="" className="h-full w-full object-cover" /> : <div className="flex flex-col items-center gap-1"><UploadIcon className="h-5 w-5" /><span className="text-[10px] font-medium text-center px-1">Баннер</span></div>}
+              <input type="file" accept="image/*" onChange={handlePosterChange} className="absolute inset-0 cursor-pointer opacity-0" />
             </label>
           </div>
           <div>
             <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Видео * (макс 750 МБ)</label>
             <label className="mt-1 group relative flex h-32 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 text-zinc-500 transition-colors hover:border-zinc-900 hover:bg-white">
-              {episodeFile ? <div className="flex flex-col items-center gap-1 px-2 text-center"><Film className="h-5 w-5 text-zinc-900" /><div className="line-clamp-1 text-[10px] font-semibold text-zinc-900 max-w-[120px] truncate">{episodeFile.name}</div><div className="text-[9px] text-zinc-500">{(episodeFile.size / 1024 / 1024).toFixed(1)} МБ</div></div> : <div className="flex flex-col items-center gap-1"><UploadIcon className="h-5 w-5" /><span className="text-[10px] font-medium text-center px-1">Видеофайл</span></div>}
-              <input type="file" accept="video/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setError(''); setEpisodeFile(f); } }} className="absolute inset-0 cursor-pointer opacity-0" />
+              {videoFile ? <div className="flex flex-col items-center gap-1 px-2 text-center"><Film className="h-5 w-5 text-zinc-900" /><div className="line-clamp-1 text-[10px] font-semibold text-zinc-900 max-w-[120px] truncate">{videoFile.name}</div><div className="text-[9px] text-zinc-500">{(videoFile.size / 1024 / 1024).toFixed(1)} МБ</div></div> : <div className="flex flex-col items-center gap-1"><UploadIcon className="h-5 w-5" /><span className="text-[10px] font-medium text-center px-1">Видеофайл</span></div>}
+              <input type="file" accept="video/*" onChange={handleVideoChange} className="absolute inset-0 cursor-pointer opacity-0" />
             </label>
           </div>
         </div>
 
-        <button onClick={handleUpload} disabled={uploading || !episodeFile || !animeTitle.trim()} className="w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40 relative">
+        <button onClick={handleUpload} disabled={uploading || !videoFile || !animeTitle.trim()} className="w-full rounded-full bg-zinc-900 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-40 relative">
           {uploading ? <span className="flex items-center justify-center gap-3"><span>Загрузка</span><span className="text-white/80 font-mono text-xs">{progress}%</span></span> : <span><UploadIcon className="inline h-4 w-4 mr-1.5" /> Загрузить</span>}
         </button>
       </div>

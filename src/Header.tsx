@@ -36,7 +36,7 @@ function LoginModal({ onClose, onSwitchToRegister }: { onClose: () => void; onSw
 }
 
 function RegisterModal({ onClose, onSwitchToLogin }: { onClose: () => void; onSwitchToLogin: () => void }) {
-  const { login, users } = useUser();
+  const { login } = useUser();
   const notify = useNotify();
   const [nickname, setNickname] = useState('');
   const [password, setPassword] = useState('');
@@ -73,9 +73,9 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   const [showOld, setShowOld] = useState(false);
   const [showNew, setShowNew] = useState(false);
 
-  const handleChange = () => {
+  const handleChange = async () => {
     if (!oldPass.trim() || !newPass.trim()) return;
-    const ok = changePassword(oldPass, newPass);
+    const ok = await changePassword(oldPass, newPass);
     if (ok) onClose();
   };
 
