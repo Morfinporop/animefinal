@@ -15,9 +15,23 @@ export const pool = DATABASE_URL ? new Pool({
 
 pool?.on('error', (err) => console.error('[db.error]', err.message));
 
+// Миграции для исправления старых таблиц (если anime был создан без колонок)
+const MIGRATIONS = [
+  `ALTER TABLE anime ADD COLUMN IF NOT EXISTS poster_mime VARCHAR(50)`,
+  `ALTER TABLE anime ADD COLUMN IF NOT EXISTS video_mime VARCHAR(50)`,
+  `ALTER TABLE anime ADD COLUMN IF NOT EXISTS video_data BYTEA`,
+  `ALTER TABLE anime ADD COLUMN IF NOT EXISTS poster_data BYTEA`,
+];
+
 export async function initDatabase() {
   if (!pool) return;
   try {
+    // Сначала миграции
+    for (const m of MIGRATIONS) {
+      try { await pool.query(m); } catch {}
+    }
+
+    // Потом схема
     const schema = readFileSync(join(process.cwd(), 'server', 'schema.sql'), 'utf-8');
     const statements = schema.split(';').map(s => s.trim()).filter(Boolean);
     for (const stmt of statements) {
