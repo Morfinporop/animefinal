@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 import { initDatabase, query } from './db';
 import { hashPassword, verifyPassword, signToken, authMiddleware, requireAuth, requireAdmin, UserPayload } from './auth';
 
