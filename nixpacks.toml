@@ -1,8 +1,13 @@
-[phases.build]
-cmds = ["npm install", "npm run build"]
+providers = ["node"]
 
-[phases.run]
-cmds = ["node --import tsx server/index.ts"]
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm ci --no-audit --no-fund || npm install --no-audit --no-fund"]
+
+[phases.build]
+cmds = ["npm run build"]
 
 [start]
-cmd = "node --import tsx server/index.ts"
+cmd = "npm run start"

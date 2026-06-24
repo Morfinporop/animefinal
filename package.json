@@ -8,8 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "tsx watch server/index.ts",
-    "start": "tsx server/index.ts",
-    "start:prod": "npm run build && tsx server/index.ts"
+    "start": "tsx server/index.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
