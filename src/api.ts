@@ -1,9 +1,26 @@
 const BASE = '/api';
 
 async function request(url: string, options?: RequestInit) {
-  const res = await fetch(BASE + url, { credentials: 'include', ...options });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Ошибка сервера');
+  let res: Response;
+  try {
+    res = await fetch(BASE + url, { credentials: 'include', ...options });
+  } catch {
+    throw new Error('Сервер недоступен');
+  }
+
+  // Безопасный парсинг JSON
+  let data: any;
+  try {
+    const text = await res.text();
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error('Ошибка сервера: неверный ответ');
+  }
+
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Ошибка ${res.status}`);
+  }
+
   return data;
 }
 

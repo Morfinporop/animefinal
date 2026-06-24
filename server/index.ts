@@ -261,8 +261,11 @@ app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
 // Отдача загруженных файлов
 app.use('/uploads', express.static(uploadsDir));
 
-// SPA fallback
+// SPA fallback — только для не-API запросов
 app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Not found' });
+  }
   const indexPath = path.join(distPath, 'index.html');
   if (fs.existsSync(indexPath)) res.sendFile(indexPath);
   else res.status(200).send('AnimeWorld API running');
