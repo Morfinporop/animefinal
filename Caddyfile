@@ -1,0 +1,10 @@
+:8080 {
+  # API запросы — проксируем на наш Express сервер
+  reverse_proxy /api/* localhost:3000
+  reverse_proxy /uploads/* localhost:3000
+
+  # Всё остальное — отдаём собранный клиент (dist/)
+  reverse_proxy * localhost:3000 {
+    header_up Host {host}
+  }
+}
