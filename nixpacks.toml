@@ -1,5 +1,8 @@
-[build]
-cmds = ["npm run build"]
+[phases.build]
+cmds = ["npm install", "npm run build"]
+
+[phases.run]
+cmds = ["node --import tsx server/index.ts"]
 
 [start]
 cmd = "node --import tsx server/index.ts"

@@ -11,7 +11,11 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '3000');
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-app.use(cors({ origin: true, credentials: true }));
+// CORS для Railway: разрешаем все origins (там frontend и backend на одном домене)
+app.use(cors({
+  origin: (origin, cb) => cb(null, true),
+  credentials: true,
+}));
 app.use(express.json({ limit: '1gb' }));
 app.use(cookieParser());
 app.use(authMiddleware);
@@ -344,6 +348,41 @@ app.delete('/api/admin/anime/:id', requireAuth, requireAdmin, async (req, res) =
     await query('DELETE FROM anime WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
+});
+
+// ============= STATIC + SPA FALLBACK =============
+const distPath = path.join(process.cwd(), 'dist');
+const indexPath = path.join(distPath, 'index.html');
+console.log(`[static] dist path: ${distPath}, exists: ${fs.existsSync(distPath)}, index.html: ${fs.existsSync(indexPath)}`);
+
+if (fs.existsSync(distPath)) {
+  // Сначала раздаём статику (CSS, JS, изображения)
+  app.use(express.static(distPath, {
+    maxAge: '1h',
+    setHeaders: (res, filePath) => {
+      // index.html — не кешируем (всегда свежий)
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  }));
+}
+
+// SPA fallback — все не-API запросы отдают index.html
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(200).type('html').send(`
+      <!DOCTYPE html>
+      <html><body style="font-family:sans-serif;padding:20px;background:#fafafa">
+        <h1>AnimeWorld API</h1>
+        <p>Frontend not built. Run <code>npm run build</code> first.</p>
+        <p>API available at <a href="/api/health">/api/health</a></p>
+      </body></html>
+    `);
+  }
 });
 
 async function start() {
