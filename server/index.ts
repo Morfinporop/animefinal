@@ -19,6 +19,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '1gb' }));
+app.use(express.urlencoded({ limit: '1gb', extended: true }));
 app.use(cookieParser());
 app.use(authMiddleware);
 
@@ -50,6 +51,7 @@ app.post('/api/auth/register', async (req, res) => {
       res.json({ user: payload, token });
     } catch (err: any) {
       if (err.code === '23505') return res.status(409).json({ error: 'Пользователь уже существует' });
+      console.error('[register] detailed error:', err.message, err.code);
       throw err;
     }
   } catch (err: any) {
@@ -350,6 +352,21 @@ app.delete('/api/admin/anime/:id', requireAuth, requireAdmin, async (req, res) =
     await query('DELETE FROM anime WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (err: any) { res.status(500).json({ error: 'Ошибка' }); }
+});
+
+// Полный сброс БД (удалить всё и создать заново)
+app.post('/api/admin/recreate', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await query('DROP TABLE IF EXISTS ratings CASCADE');
+    await query('DROP TABLE IF EXISTS user_votes CASCADE');
+    await query('DROP TABLE IF EXISTS comments CASCADE');
+    await query('DROP TABLE IF EXISTS anime CASCADE');
+    await query('DROP TABLE IF EXISTS users CASCADE');
+    // Пересоздать всё
+    const { initDatabase } = await import('./db');
+    await initDatabase();
+    res.json({ ok: true });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // ============= STATIC + SPA FALLBACK =============

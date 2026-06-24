@@ -25,7 +25,7 @@ export default function HomePage() {
   const loadAnime = useCallback(async () => {
     try {
       const data = await api.getAnimeList();
-      setAnimeList(data);
+      setAnimeList(Array.isArray(data) ? data : []);
     } catch {}
     setLoading(false);
   }, []);
@@ -58,21 +58,33 @@ export default function HomePage() {
   }, [routeId]);
 
   const buildCardFromAnime = (a: any): CardData => ({
-    id: a.id, title: a.title, description: a.description || '',
-    image: api.getPosterUrl(a.id), views: a.viewsCount || 0,
-    rating: a.rating || 0, genres: a.genres || [],
+    id: a.id || 0,
+    title: a.title || 'Без названия',
+    description: a.description || '',
+    image: a.id ? api.getPosterUrl(a.id) : '',
+    views: a.viewsCount || 0,
+    rating: a.rating || 0,
+    genres: Array.isArray(a.genres) ? a.genres : [],
   });
 
   const handleCardClick = useCallback((card: CardData) => {
     const animeData: AnimeData = {
-      id: card.id, title: card.title, description: card.description,
-      fullDescription: card.description, image: card.image,
-      views: card.views, rating: card.rating, genres: card.genres,
-      year: 2024, videoSrc: api.getVideoUrl(card.id),
-      qualitySources: {}, voiceovers: ['Оригинал'], comments: [],
+      id: card.id || 0,
+      title: card.title || 'Без названия',
+      description: card.description || '',
+      fullDescription: card.description || '',
+      image: card.image || '',
+      views: card.views || 0,
+      rating: card.rating || 0,
+      genres: Array.isArray(card.genres) ? card.genres : [],
+      year: 2024,
+      videoSrc: card.id ? api.getVideoUrl(card.id) : '',
+      qualitySources: {},
+      voiceovers: ['Оригинал'],
+      comments: [],
     };
     setSelectedAnime(animeData);
-    navigate(`/video/${card.id}`);
+    if (card.id) navigate(`/video/${card.id}`);
   }, [navigate]);
 
   const handleBack = useCallback(() => {
@@ -112,7 +124,7 @@ export default function HomePage() {
 
   const displayList: CardData[] = isSearching ? searchResults : animeList.map(buildCardFromAnime).filter((c) => {
     if (genre === 'all') return true;
-    return c.genres.includes(genre);
+    return c.genres && c.genres.includes(genre);
   });
 
   if (selectedAnime) {
