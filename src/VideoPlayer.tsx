@@ -381,15 +381,15 @@ export default function VideoPlayer({
       )}
 
       <div className={`pointer-events-none absolute inset-0 z-10 flex items-center justify-center transition-opacity duration-200 ${showCenterButton ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm">
-          {playing ? <Pause className="h-9 w-9 fill-white text-white" /> : <Play className="h-9 w-9 fill-white text-white ml-0.5" />}
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm">
+          {playing ? <Pause className="h-6 w-6 fill-white text-white" /> : <Play className="h-6 w-6 fill-white text-white ml-0.5" />}
         </div>
       </div>
 
       {!playing && !loading && !error && !showCenterButton && (
         <div className="pointer-events-none absolute inset-0 z-5 flex items-center justify-center">
-          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
-            <Play className="h-12 w-12 fill-white text-white ml-1" />
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
+            <Play className="h-7 w-7 fill-white text-white ml-0.5" />
           </div>
         </div>
       )}
@@ -444,7 +444,7 @@ export default function VideoPlayer({
         </div>
       )}
 
-      <div className={`absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/95 via-black/50 to-transparent px-3 pb-2.5 pt-14 transition-opacity duration-200 sm:px-5 ${showUI ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
+      <div className={`absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/95 via-black/50 to-transparent px-3 pb-2 pt-12 transition-opacity duration-200 sm:px-4 ${showUI ? 'opacity-100' : 'pointer-events-none opacity-0'}`}>
         <div
           className="group/seek relative flex h-3 cursor-pointer items-center"
           onClick={onSeek}
@@ -466,38 +466,38 @@ export default function VideoPlayer({
           )}
         </div>
 
-        <div className="mt-2 flex items-center gap-1.5 text-white sm:gap-2.5 text-[125%]">
-          <button onClick={() => { togglePlay(); flashCenterButton(); }} className="flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-white/15" title="K">
-            {playing ? <Pause className="h-6 w-6 fill-white" /> : <Play className="h-6 w-6 fill-white ml-0.5" />}
+        <div className="mt-1 flex items-center gap-1 text-white sm:gap-2">
+          <button onClick={() => { togglePlay(); flashCenterButton(); }} className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/15" title="K">
+            {playing ? <Pause className="h-5 w-5 fill-white" /> : <Play className="h-5 w-5 fill-white ml-0.5" />}
           </button>
-          <button onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }} className="hidden h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/15 sm:flex">
-            <SkipBack className="h-5 w-5" />
+          <button onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10); }} className="hidden h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/15 sm:flex">
+            <SkipBack className="h-4 w-4" />
           </button>
-          <button onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10); }} className="hidden h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/15 sm:flex">
-            <SkipForward className="h-5 w-5" />
+          <button onClick={() => { if (videoRef.current) videoRef.current.currentTime = Math.min(duration, videoRef.current.currentTime + 10); }} className="hidden h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/15 sm:flex">
+            <SkipForward className="h-4 w-4" />
           </button>
 
           <div className="flex items-center">
-            <button onClick={() => setMuted((m) => !m)} className="flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:bg-white/15">
-              {muted || volume === 0 ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
+            <button onClick={() => setMuted((m) => !m)} className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-white/15">
+              {muted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
             </button>
             <input
               type="range" min={0} max={1} step={0.05}
               value={muted ? 0 : volume}
               onChange={(e) => { setVolume(parseFloat(e.target.value)); setMuted(false); }}
-              className={`ml-2 h-1.5 w-20 sm:w-24 cursor-pointer appearance-none rounded-full bg-white/30 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white ${isMobile ? 'block' : 'hidden group-hover/player:block'}`}
+              className={`ml-1 h-1 w-16 sm:w-20 cursor-pointer appearance-none rounded-full bg-white/30 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white ${isMobile ? 'block' : 'hidden group-hover/player:block'}`}
             />
           </div>
 
-          <div className="ml-1 font-mono text-[15px] tabular-nums text-white/95">
+          <div className="ml-1 font-mono text-xs tabular-nums text-white/95">
             {formatTime(position)} <span className="text-white/60">/ {formatTime(duration)}</span>
           </div>
 
           <div className="flex-1" />
 
           <div className="relative">
-            <button onClick={() => setShowSettings((s) => !s)} className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${showSettings ? 'bg-white/20' : 'hover:bg-white/15'}`}>
-              <Settings className="h-5 w-5" />
+            <button onClick={() => setShowSettings((s) => !s)} className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${showSettings ? 'bg-white/20' : 'hover:bg-white/15'}`}>
+              <Settings className="h-4 w-4" />
             </button>
             {showSettings && (
               <div className="absolute bottom-10 right-0 z-40 w-40 sm:w-48 max-w-[85vw] overflow-hidden rounded-xl bg-black/95 text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-md">
@@ -514,8 +514,8 @@ export default function VideoPlayer({
             )}
           </div>
 
-          <button onClick={toggleFullscreen} className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-white/15">
-            {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
+          <button onClick={toggleFullscreen} className="flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/15">
+            {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
           </button>
         </div>
       </div>

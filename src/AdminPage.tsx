@@ -4,7 +4,7 @@ import { useUser } from './UserContext';
 import { api } from './api';
 
 export default function AdminPage({ onClose }: { onClose: () => void }) {
-  const { user, users, refreshUsers, toggleAdmin, toggleUpload } = useUser();
+  const { user, users, refreshUsers, toggleAdmin, toggleUpload, deleteUser } = useUser();
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'users' | 'anime'>('users');
   const [animeList, setAnimeList] = useState<any[]>([]);
@@ -58,13 +58,13 @@ export default function AdminPage({ onClose }: { onClose: () => void }) {
               <tbody>
                 {filtered.map(u => (
                   <tr key={u.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/50">
-                    <td className="px-3 py-2.5"><div className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white flex-shrink-0" style={{ backgroundColor: u.color || '#d4d4d8' }}>{(u.nickname || '?').charAt(0).toUpperCase()}</div><div><div className="font-semibold text-zinc-900 text-xs">{u.nickname}</div><div className="text-[10px] text-zinc-500 sm:hidden">ID: {u.id}</div></div></div></td>
+                    <td className="px-3 py-2.5"><div className="flex items-center gap-2"><div className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white flex-shrink-0" style={{ backgroundColor: u.color }}>{u.nickname.charAt(0).toUpperCase()}</div><div><div className="font-semibold text-zinc-900 text-xs">{u.nickname}</div><div className="text-[10px] text-zinc-500 sm:hidden">ID: {u.id}</div></div></div></td>
                     <td className="hidden px-3 py-2.5 font-mono text-[11px] text-zinc-500 sm:table-cell">{u.id}</td>
                     <td className="px-3 py-2.5"><div className="flex flex-wrap gap-1">{u.isAdmin && <span className="rounded-full bg-pink-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-pink-700">Админ</span>}{u.canUpload && !u.isAdmin && <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-700">Загрузка</span>}{!u.isAdmin && !u.canUpload && <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[9px] font-medium uppercase text-zinc-500">—</span>}</div></td>
                     <td className="px-3 py-2.5"><div className="flex justify-end gap-1">
                       <button onClick={() => toggleAdmin(u.id)} disabled={u.id === user.id} className={`flex h-7 items-center rounded-full px-2.5 text-[10px] font-medium ${u.isAdmin ? 'bg-pink-100 text-pink-700 hover:bg-pink-200' : 'border border-zinc-200 text-zinc-600 hover:bg-zinc-50'} disabled:opacity-30`}>Админ</button>
                       <button onClick={() => toggleUpload(u.id)} disabled={u.isAdmin} className={`flex h-7 items-center rounded-full px-2.5 text-[10px] font-medium ${u.canUpload && !u.isAdmin ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'border border-zinc-200 text-zinc-600 hover:bg-zinc-50'} disabled:opacity-30`}>Загрузка</button>
-                      <button disabled={u.isAdmin} className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-200 disabled:opacity-30" title="Удаление недоступно"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => { if (confirm(`Удалить ${u.nickname}?`)) deleteUser(u.id); }} disabled={u.isAdmin} className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-30"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div></td>
                   </tr>
                 ))}

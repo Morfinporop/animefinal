@@ -1,0 +1,33 @@
+{
+  "name": "anime-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev:tsx": "tsx index.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "cors": "^2.8.5",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.7",
+    "bcryptjs": "^3.0.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.14.1",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.1",
+    "@types/cors": "^2.8.17",
+    "@types/cookie-parser": "^1.4.8",
+    "@types/bcryptjs": "^3.0.0",
+    "@types/jsonwebtoken": "^9.0.8",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.19.5",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
